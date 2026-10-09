@@ -1,0 +1,79 @@
+name: Build macOS
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (universal arm64 + x86_64)
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Engine tests
+        run: ./build/DaveGrainTests_artefacts/Release/DaveGrainTests
+
+      - name: Ad-hoc code sign
+        run: |
+          ART=build/DaveGrain_artefacts/Release
+          codesign --force --deep --sign - "$ART/VST3/Dave Grain.vst3"
+          codesign --force --deep --sign - "$ART/AU/Dave Grain.component"
+          codesign --force --deep --sign - "$ART/Standalone/Dave Grain.app"
+          lipo -info "$ART/VST3/Dave Grain.vst3/Contents/MacOS/Dave Grain"
+
+      - name: Validate AU with auval
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R "build/DaveGrain_artefacts/Release/AU/Dave Grain.component" ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          sleep 2
+          auval -v aumu Dgrn Dvgr
+
+      - name: Validate VST3 + AU with pluginval
+        run: |
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process --skip-gui-tests \
+            "build/DaveGrain_artefacts/Release/VST3/Dave Grain.vst3"
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process --skip-gui-tests \
+            ~/Library/Audio/Plug-Ins/Components/"Dave Grain.component"
+
+      - name: Package
+        run: |
+          ART=build/DaveGrain_artefacts/Release
+          PKG="Dave Grain macOS"
+          mkdir -p "$PKG"
+          cp -R "$ART/VST3/Dave Grain.vst3" "$PKG/"
+          cp -R "$ART/AU/Dave Grain.component" "$PKG/"
+          cp -R "$ART/Standalone/Dave Grain.app" "$PKG/"
+          cp packaging/Install.command "$PKG/"
+          chmod +x "$PKG/Install.command"
+          cp packaging/READ_ME_FIRST.txt "$PKG/"
+          ditto -c -k --sequesterRsrc --keepParent "$PKG" DaveGrain-macOS.zip
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: DaveGrain-macOS
+          path: DaveGrain-macOS.zip
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: DaveGrain-macOS.zip

@@ -29,7 +29,8 @@ principle maps to a control.
 Every push builds the Mac version automatically using GitHub Actions (`.github/workflows/build-macos.yml`).
 1. Open the repo on GitHub, go to **Actions**, select **Build macOS**, then open the latest successful run.
 2. Download the **DaveGrain-macOS** artifact and unzip it.
-3. Right-click **Install.command** and choose **Open**. It installs the VST3, AU and app for your user and removes the download quarantine.
+3. Open **Terminal**, type `bash ` (with a space), drag **Install.command** into the Terminal window and press Return. It installs the VST3, AU and app for your user and removes the download quarantine.
+   If macOS says *"Dave Grain" can't be opened because Apple cannot check it for malicious software*, that's because the build isn't notarised. Running the installer this way fixes it. Don't double-click the files inside the downloaded folder.
 
 To make a permanent download link, push a tag such as `v1.0.0`. The workflow then attaches the zip to a GitHub Release.
 
